@@ -1,0 +1,1 @@
+-- Add seed data after the initial database schema is defined.
