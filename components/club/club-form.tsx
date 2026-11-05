@@ -10,14 +10,14 @@ import { LogoUploader } from '@/components/ui/logo-uploader'
 import { Coffee, Pizza, IceCream, Cookie, Cake, Star } from 'lucide-react'
 import { HexColorPicker } from 'react-colorful'
 
-// 1. Schema actualizado y robusto
+// Schema SIN z.coerce - usaremos valueAsNumber en el input
 const formSchema = z.object({
   name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   description: z.string().optional(),
   logo_url: z.string().optional(),
   primary_color: z.string().min(1, 'Selecciona un color'),
   stamp_icon: z.string().min(1, 'Selecciona un icono'),
-  stamps_required: z.coerce.number().min(1, 'Mínimo 1 sello').max(20, 'Máximo 20 sellos'),
+  stamps_required: z.number().min(1, 'Mínimo 1 sello').max(20, 'Máximo 20 sellos'),
   reward_description: z.string().min(2, 'Describe la recompensa'),
 })
 
@@ -35,7 +35,6 @@ const iconOptions = [
 export function ClubForm() {
   const [showColorPicker, setShowColorPicker] = useState(false)
 
-  // 2. useForm configurado correctamente
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -49,14 +48,12 @@ export function ClubForm() {
     }
   })
 
-  // Valores en vivo para el preview
   const watchName = watch('name')
   const watchColor = watch('primary_color')
   const watchIcon = watch('stamp_icon')
   const watchStamps = watch('stamps_required')
   const watchReward = watch('reward_description')
 
-  // Función cuando el formulario es VÁLIDO
   const onSubmit = async (data: FormData) => {
     console.log('✅ Datos válidos a enviar:', data)
     
@@ -73,10 +70,8 @@ export function ClubForm() {
     }
   }
 
-  // Función cuando el formulario es INVÁLIDO (esto evita el salto silencioso y te dice qué falta)
   const onInvalid = (errors: any) => {
-    console.error('❌ Errores de validación que causan el salto:', errors)
-    // Encuentra el primer error y muéstralo en alerta
+    console.error('❌ Errores de validación:', errors)
     const firstErrorKey = Object.keys(errors)[0]
     const firstError = errors[firstErrorKey]
     if (firstError?.message) {
@@ -86,24 +81,20 @@ export function ClubForm() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      {/* Columna Izquierda: Formulario */}
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold mb-1">Crea tu club</h2>
           <p className="text-muted-foreground text-sm">Configura tu programa de lealtad</p>
         </div>
 
-        {/* Agregamos onInvalid a handleSubmit para capturar el error antes de que haga scroll */}
         <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4 bg-card border rounded-lg p-6">
           
-          {/* 3. LogoUploader integrado */}
           <LogoUploader 
             onLogoUploaded={(url) => {
               setValue('logo_url', url, { shouldValidate: true })
             }} 
           />
 
-          {/* Nombre */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Nombre del Negocio</label>
             <input
@@ -114,7 +105,6 @@ export function ClubForm() {
             {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
           </div>
 
-          {/* Descripción */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Descripción (opcional)</label>
             <textarea
@@ -125,7 +115,6 @@ export function ClubForm() {
             />
           </div>
 
-          {/* Color Principal - CON REACT-COLORFUL */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Color Principal</label>
             <div className="flex items-center gap-3">
@@ -159,7 +148,6 @@ export function ClubForm() {
             )}
           </div>
 
-          {/* Icono */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Icono del Sello</label>
             <div className="grid grid-cols-3 gap-2">
@@ -181,7 +169,6 @@ export function ClubForm() {
             {errors.stamp_icon && <p className="text-xs text-red-500">{errors.stamp_icon.message}</p>}
           </div>
 
-          {/* Sellos Requeridos */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Sellos para recompensa</label>
             <input
@@ -194,7 +181,6 @@ export function ClubForm() {
             {errors.stamps_required && <p className="text-xs text-red-500">{errors.stamps_required.message}</p>}
           </div>
 
-          {/* Recompensa */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Descripción de la Recompensa</label>
             <input
@@ -205,7 +191,6 @@ export function ClubForm() {
             {errors.reward_description && <p className="text-xs text-red-500">{errors.reward_description.message}</p>}
           </div>
 
-          {/* Botón Submit */}
           <button
             type="submit"
             disabled={isSubmitting}
@@ -216,7 +201,6 @@ export function ClubForm() {
         </form>
       </div>
 
-      {/* Columna Derecha: Preview */}
       <div className="hidden lg:block">
         <LivePreview
           name={watchName}
