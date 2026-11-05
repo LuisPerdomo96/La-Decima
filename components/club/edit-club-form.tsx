@@ -15,7 +15,7 @@ const formSchema = z.object({
   logo_url: z.string().optional(),
   primary_color: z.string(),
   stamp_icon: z.string(),
-  stamps_required: z.number().min(1).max(20),
+stamps_required: z.number().min(1).max(20),
   reward_description: z.string().min(2, 'Describe la recompensa'),
 })
 
