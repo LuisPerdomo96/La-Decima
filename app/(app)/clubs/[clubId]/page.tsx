@@ -54,7 +54,7 @@ export default async function ClubDetailPage({ params }: ClubDetailPageProps) {
     .eq('club_id', club.id)
     .eq('status', 'delivered')
 
-  const publicUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/c/${club.slug}`
+  const publicUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://la-decima.vercel.app/'}/c/${club.slug}`
 
   return (
     <div className="space-y-6">
