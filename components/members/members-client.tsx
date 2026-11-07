@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Coffee, MoreVertical } from 'lucide-react'
+import { Search, Coffee, Download } from 'lucide-react'
 
 interface Member {
   id: string
@@ -63,43 +63,34 @@ export function MembersClient({ members, club }: MembersClientProps) {
     return true
   })
 
-  // 1. Agrega esta función dentro del componente MembersClient:
-const exportToCSV = () => {
-  const headers = ['Nombre', 'Email', 'Código', 'Sellos Actuales', 'Total Ganados', 'Recompensas Canjeadas', 'Última Visita', 'Fecha de Registro']
-  const rows = filteredMembers.map(m => [
-    m.name,
-    m.email,
-    m.member_code,
-    m.current_stamps,
-    m.total_stamps_earned,
-    m.rewards_redeemed,
-    m.last_visit_at ? new Date(m.last_visit_at).toLocaleDateString() : 'Nunca',
-    new Date(m.joined_at).toLocaleDateString()
-  ])
+  const exportToCSV = () => {
+    const headers = ['Nombre', 'Email', 'Código', 'Sellos Actuales', 'Total Ganados', 'Recompensas Canjeadas', 'Última Visita', 'Fecha de Registro']
+    const rows = filteredMembers.map(m => [
+      m.name,
+      m.email,
+      m.member_code,
+      m.current_stamps,
+      m.total_stamps_earned,
+      m.rewards_redeemed,
+      m.last_visit_at ? new Date(m.last_visit_at).toLocaleDateString() : 'Nunca',
+      new Date(m.joined_at).toLocaleDateString()
+    ])
 
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-      ].join('\n')
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n')
 
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', `miembros-${club.name.replace(/\s+/g, '-').toLowerCase()}.csv`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    }
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `miembros-${club.name.replace(/\s+/g, '-').toLowerCase()}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
-    // 2. En el Header, actualiza el botón de Exportar:
-    <button 
-      onClick={exportToCSV}
-      className="inline-flex items-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-accent"
-    >
-      <Download className="w-4 h-4" />
-      Exportar CSV
-    </button>
   const getStatusBadge = (member: Member) => {
     if (member.current_stamps >= club.stamps_required) {
       return { label: 'Recompensa lista', color: 'bg-green-100 text-green-700' }
@@ -118,36 +109,46 @@ const exportToCSV = () => {
 
   return (
     <div className="bg-card border rounded-xl">
-      {/* Filtros */}
-      <div className="p-4 border-b flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre, email o código..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border bg-background pl-9 pr-4 py-2 text-sm"
-          />
+      {/* Filtros y Acciones */}
+      <div className="p-4 border-b flex flex-col md:flex-row gap-3 justify-between">
+        <div className="flex flex-col md:flex-row gap-3 flex-1">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre, email o código..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-md border bg-background pl-9 pr-4 py-2 text-sm"
+            />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {(['all', 'active', 'inactive', 'complete'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  filter === f
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground hover:bg-accent'
+                }`}
+              >
+                {f === 'all' && 'Todos'}
+                {f === 'active' && 'Activos'}
+                {f === 'inactive' && 'Inactivos'}
+                {f === 'complete' && 'Recompensa lista'}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex gap-2">
-          {(['all', 'active', 'inactive', 'complete'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                filter === f
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-accent'
-              }`}
-            >
-              {f === 'all' && 'Todos'}
-              {f === 'active' && 'Activos'}
-              {f === 'inactive' && 'Inactivos'}
-              {f === 'complete' && 'Recompensa lista'}
-            </button>
-          ))}
-        </div>
+        
+        <button 
+          onClick={exportToCSV}
+          className="inline-flex items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-accent whitespace-nowrap"
+        >
+          <Download className="w-4 h-4" />
+          Exportar CSV
+        </button>
       </div>
 
       {/* Tabla */}
