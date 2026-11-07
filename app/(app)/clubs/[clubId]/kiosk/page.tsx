@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { QRScanner } from '@/components/kiosk/qr-scanner'
-import { Coffee, Gift, CheckCircle, AlertCircle, Search } from 'lucide-react'
+import { Html5Qrcode } from 'html5-qrcode'
+import { Coffee, Gift, CheckCircle, AlertCircle, Search, X } from 'lucide-react'
 
 interface Member {
   id: string
@@ -12,7 +12,7 @@ interface Member {
   member_code: string
   current_stamps: number
   total_stamps_earned: number
-  rewards_redeemed: number // ← AGREGADO
+  rewards_redeemed: number
   email: string
 }
 
@@ -34,42 +34,62 @@ export default function KioskPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [rewardEarned, setRewardEarned] = useState(false)
-
+  const [isScanning, setIsScanning] = useState(false)
+  
+  const scannerRef = useRef<Html5Qrcode | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
     loadClub()
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {})
+      }
+    }
   }, [clubId])
 
   async function loadClub() {
-    const { data, error } = await supabase
-      .from('clubs')
-      .select('*')
-      .eq('id', clubId)
-      .single()
+    const { data, error } = await supabase.from('clubs').select('*').eq('id', clubId).single()
+    if (!error && data) setClub(data)
+  }
 
-    if (error) {
-      setError('Error al cargar el club')
-    } else {
-      setClub(data)
+  async function startScanner() {
+    if (!scannerRef.current) {
+      scannerRef.current = new Html5Qrcode("qr-reader")
+    }
+    
+    try {
+      await scannerRef.current.start(
+        { facingMode: "environment" }, // Fuerza la cámara trasera en móvil
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          handleScan(decodedText)
+          stopScanner()
+        },
+        () => {} // Ignorar errores de escaneo continuo
+      )
+      setIsScanning(true)
+    } catch (err) {
+      setError('No se pudo acceder a la cámara. Usa el código manual.')
     }
   }
 
-  async function handleScan(decodedText: string) {
+  function stopScanner() {
+    if (scannerRef.current && isScanning) {
+      scannerRef.current.stop().catch(() => {})
+      setIsScanning(false)
+    }
+  }
+
+  async function handleScan(code: string) {
     setError('')
     setSuccess('')
     setRewardEarned(false)
-    
-    // El QR puede contener el member_code o el member_id
-    // Vamos a buscar por ambos
-    await findMember(decodedText)
+    await findMember(code.trim().toUpperCase())
   }
 
   async function findMember(codeOrId: string) {
     setLoading(true)
-    setError('')
-
-    // Buscar por member_code o por id
     const { data: member, error } = await supabase
       .from('members')
       .select('*')
@@ -78,261 +98,176 @@ export default function KioskPage() {
       .single()
 
     setLoading(false)
-
     if (error || !member) {
       setError('Cliente no encontrado. Verifica el código.')
       setScannedMember(null)
+    } else {
+      setScannedMember(member)
+    }
+  }
+
+  async function giveStamp() {
+    if (!scannedMember || !club) return
+
+    // Feedback táctil para móviles
+    if (navigator.vibrate) navigator.vibrate(50)
+
+    setLoading(true)
+    const newStamps = scannedMember.current_stamps + 1
+    const earnedReward = newStamps >= club.stamps_required
+    const stampsAfterReward = earnedReward ? 0 : newStamps
+
+    const { error: memberError } = await supabase
+      .from('members')
+      .update({
+        current_stamps: stampsAfterReward,
+        total_stamps_earned: scannedMember.total_stamps_earned + 1,
+        rewards_redeemed: earnedReward ? scannedMember.rewards_redeemed + 1 : scannedMember.rewards_redeemed,
+        last_visit_at: new Date().toISOString(),
+      })
+      .eq('id', scannedMember.id)
+
+    if (memberError) {
+      setError('Error al agregar sello')
+      setLoading(false)
       return
     }
 
-    setScannedMember(member)
-  }
-
-  async function handleManualSearch(e: React.FormEvent) {
-    e.preventDefault()
-    if (!manualCode.trim()) return
-    await findMember(manualCode.trim().toUpperCase())
-  }
-
-async function giveStamp() {
-  if (!scannedMember || !club) return
-
-  setLoading(true)
-  setError('')
-  setSuccess('')
-  setRewardEarned(false)
-
-  const newStamps = scannedMember.current_stamps + 1
-  const earnedReward = newStamps >= club.stamps_required
-
-  // Si ganó la recompensa, resetear a 0 (o mantener excedente)
-  const stampsAfterReward = earnedReward ? 0 : newStamps
-
-  // Actualizar miembro
-  const { error: memberError } = await supabase
-    .from('members')
-    .update({
-      current_stamps: stampsAfterReward,  // ← RESET AQUÍ
-      total_stamps_earned: scannedMember.total_stamps_earned + 1,
-      rewards_redeemed: earnedReward 
-        ? scannedMember.rewards_redeemed + 1 
-        : scannedMember.rewards_redeemed,
-      last_visit_at: new Date().toISOString(),
-    })
-    .eq('id', scannedMember.id)
-
-  if (memberError) {
-    setError('Error al agregar sello')
-    setLoading(false)
-    return
-  }
-
-  // Registrar el sello
-  await supabase
-    .from('stamps')
-    .insert({
+    await supabase.from('stamps').insert({
       member_id: scannedMember.id,
       club_id: clubId,
       stamps_added: 1,
       reason: earnedReward ? 'Visita (recompensa ganada)' : 'Visita',
     })
 
-  // Si ganó recompensa, crear registro
-  if (earnedReward) {
-    await supabase
-      .from('rewards')
-      .insert({
+    if (earnedReward) {
+      await supabase.from('rewards').insert({
         member_id: scannedMember.id,
         club_id: clubId,
         reward_description: club.reward_description,
         stamps_used: club.stamps_required,
         status: 'pending',
       })
+      setRewardEarned(true)
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]) // Vibración de éxito
+    }
 
-    setRewardEarned(true)
+    setSuccess(`✅ Sello agregado a ${scannedMember.name}`)
+    setScannedMember({ 
+      ...scannedMember, 
+      current_stamps: stampsAfterReward,
+      rewards_redeemed: earnedReward ? scannedMember.rewards_redeemed + 1 : scannedMember.rewards_redeemed
+    })
+    setLoading(false)
+
+    setTimeout(() => {
+      setScannedMember(null)
+      setSuccess('')
+      setRewardEarned(false)
+      setManualCode('')
+    }, 4000)
   }
 
-  setSuccess(`✅ Sello agregado a ${scannedMember.name}${earnedReward ? ' 🎉 ¡Recompensa ganada!' : ''}`)
-  setScannedMember({ 
-    ...scannedMember, 
-    current_stamps: stampsAfterReward,
-    rewards_redeemed: earnedReward ? scannedMember.rewards_redeemed + 1 : scannedMember.rewards_redeemed
-  })
-  setLoading(false)
-
-  setTimeout(() => {
-    setScannedMember(null)
-    setSuccess('')
-    setManualCode('')
-  }, 4000)
-}
-
-  if (!club) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-muted-foreground">Cargando club...</p>
-      </div>
-    )
-  }
+  if (!club) return <div className="p-8 text-center">Cargando club...</div>
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Modo Kiosco</h1>
-          <p className="text-muted-foreground">{club.name}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-sm text-muted-foreground">Sellos necesarios</p>
-          <p className="text-2xl font-bold">{club.stamps_required}</p>
-        </div>
+    <div className="max-w-md mx-auto p-4 space-y-6 min-h-screen bg-gray-50">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold">{club.name}</h1>
+        <p className="text-sm text-muted-foreground">Modo Kiosco (Móvil)</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Columna izquierda: Escáner */}
-        <div className="bg-card border rounded-xl p-6 space-y-6">
-          <QRScanner onScan={handleScan} onError={setError} />
-
-          {/* Búsqueda manual */}
-          <div className="border-t pt-6">
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Search className="w-5 h-5" />
-              O ingresa el código manualmente
-            </h3>
-            <form onSubmit={handleManualSearch} className="flex gap-2">
-              <input
-                type="text"
-                value={manualCode}
-                onChange={(e) => setManualCode(e.target.value)}
-                placeholder="Ej. JUA-TNE"
-                className="flex-1 rounded-md border border-input bg-background px-4 py-2 text-sm uppercase"
-              />
-              <button
-                type="submit"
-                disabled={loading || !manualCode.trim()}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-              >
-                Buscar
-              </button>
-            </form>
+      {/* Escáner */}
+      <div className="bg-white rounded-xl shadow-sm border p-4 space-y-4">
+        {!isScanning ? (
+          <button
+            onClick={startScanner}
+            className="w-full py-8 border-2 border-dashed rounded-lg flex flex-col items-center gap-2 text-muted-foreground hover:bg-gray-50"
+          >
+            <CameraIcon className="w-8 h-8" />
+            <span className="font-medium">Toca para escanear QR del cliente</span>
+          </button>
+        ) : (
+          <div className="relative">
+            <div id="qr-reader" className="w-full rounded-lg overflow-hidden" />
+            <button
+              onClick={stopScanner}
+              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
+        )}
 
-        {/* Columna derecha: Info del cliente */}
-        <div className="bg-card border rounded-xl p-6">
-          {error && (
-            <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-lg text-sm mb-4 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="bg-green-500/10 border border-green-500 text-green-700 px-4 py-3 rounded-lg text-sm mb-4 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 flex-shrink-0" />
-              {success}
-            </div>
-          )}
-
-          {rewardEarned && (
-            <div className="bg-yellow-500/10 border-2 border-yellow-500 rounded-lg p-6 mb-4 text-center">
-              <Gift className="w-12 h-12 mx-auto mb-2 text-yellow-600" />
-              <h3 className="text-xl font-bold text-yellow-900 mb-1">
-                ¡{scannedMember?.name} ganó su recompensa!
-              </h3>
-              <p className="text-yellow-800 mb-4">{club.reward_description}</p>
-              <button
-                onClick={() => setRewardEarned(false)}
-                className="rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium text-white"
-              >
-                Marcar como entregada
-              </button>
-            </div>
-          )}
-
-          {scannedMember ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div 
-                  className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-bold"
-                  style={{ backgroundColor: club.primary_color }}
-                >
-                  {scannedMember.name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold">{scannedMember.name}</h2>
-                  <p className="text-sm text-muted-foreground">{scannedMember.member_code}</p>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <div className="flex justify-between items-end mb-2">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Sellos actuales</p>
-                    <p className="text-4xl font-bold">
-                      {scannedMember.current_stamps}
-                      <span className="text-lg text-muted-foreground">/{club.stamps_required}</span>
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-muted-foreground">Faltan</p>
-                    <p className="text-2xl font-bold">
-                      {club.stamps_required - scannedMember.current_stamps}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Barra de progreso */}
-                <div className="h-3 bg-muted rounded-full overflow-hidden mb-4">
-                  <div
-                    className="h-full transition-all duration-500"
-                    style={{
-                      width: `${(scannedMember.current_stamps / club.stamps_required) * 100}%`,
-                      backgroundColor: club.primary_color,
-                    }}
-                  />
-                </div>
-
-                {/* Grid de sellos */}
-                <div className="grid grid-cols-5 gap-2 mb-6">
-                  {Array.from({ length: club.stamps_required }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`aspect-square rounded-full border-2 flex items-center justify-center ${
-                        i < scannedMember.current_stamps
-                          ? 'border-primary bg-primary/10'
-                          : 'border-muted bg-muted/20'
-                      }`}
-                    >
-                      {i < scannedMember.current_stamps && (
-                        <Coffee className="w-4 h-4 text-primary" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  onClick={giveStamp}
-                  disabled={loading}
-                  className="w-full rounded-lg py-4 text-lg font-bold text-white shadow-lg transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
-                  style={{ backgroundColor: club.primary_color }}
-                >
-                  {loading ? 'Procesando...' : 'Dar sello'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-              <Coffee className="w-16 h-16 text-muted-foreground/30 mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Esperando cliente</h3>
-              <p className="text-muted-foreground">
-                Escanea el código QR o ingresa el código manualmente
-              </p>
-            </div>
-          )}
+        {/* Búsqueda Manual */}
+        <div className="pt-2 border-t">
+          <form onSubmit={(e) => { e.preventDefault(); findMember(manualCode) }} className="flex gap-2">
+            <input
+              type="text"
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+              placeholder="CÓDIGO (Ej. JUA-TNE)"
+              className="flex-1 rounded-md border px-3 py-3 text-center font-mono text-lg uppercase"
+            />
+            <button type="submit" disabled={loading} className="bg-primary text-primary-foreground px-4 rounded-md font-medium">
+              {loading ? '...' : 'Buscar'}
+            </button>
+          </form>
         </div>
       </div>
+
+      {/* Mensajes */}
+      {error && <div className="bg-red-50 text-red-700 p-4 rounded-lg flex items-center gap-2"><AlertCircle className="w-5 h-5" /> {error}</div>}
+      {success && <div className="bg-green-50 text-green-700 p-4 rounded-lg flex items-center gap-2"><CheckCircle className="w-5 h-5" /> {success}</div>}
+
+      {/* Resultado del Escaneo */}
+      {scannedMember && !rewardEarned && (
+        <div className="bg-white rounded-xl shadow-lg border p-6 text-center space-y-4 animate-in fade-in zoom-in duration-300">
+          <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: club.primary_color }}>
+            {scannedMember.name.charAt(0)}
+          </div>
+          <div>
+            <h2 className="text-xl font-bold">{scannedMember.name}</h2>
+            <p className="text-sm text-muted-foreground font-mono">{scannedMember.member_code}</p>
+          </div>
+          
+          <div className="py-4">
+            <p className="text-4xl font-bold">{scannedMember.current_stamps} <span className="text-lg text-muted-foreground">/ {club.stamps_required}</span></p>
+            <p className="text-sm text-muted-foreground">Sellos actuales</p>
+          </div>
+
+          <button
+            onClick={giveStamp}
+            disabled={loading}
+            className="w-full py-4 rounded-xl text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
+            style={{ backgroundColor: club.primary_color }}
+          >
+            {loading ? 'Procesando...' : 'Dar Sello'}
+          </button>
+        </div>
+      )}
+
+      {/* Modal de Recompensa */}
+      {rewardEarned && (
+        <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-6 text-center space-y-4 animate-in zoom-in duration-300">
+          <Gift className="w-12 h-12 mx-auto text-yellow-600" />
+          <h3 className="text-xl font-bold text-yellow-900">¡Recompensa Ganada!</h3>
+          <p className="text-yellow-800 font-medium">{club.reward_description}</p>
+          <p className="text-sm text-yellow-700">Los sellos se han reiniciado a 0.</p>
+          <button
+            onClick={() => { setRewardEarned(false); setScannedMember(null); }}
+            className="w-full py-3 bg-yellow-600 text-white rounded-lg font-bold"
+          >
+            Entendido
+          </button>
+        </div>
+      )}
     </div>
+  )
+}
+
+function CameraIcon(props: any) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
   )
 }

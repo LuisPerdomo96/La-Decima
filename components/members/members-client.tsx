@@ -63,6 +63,43 @@ export function MembersClient({ members, club }: MembersClientProps) {
     return true
   })
 
+  // 1. Agrega esta función dentro del componente MembersClient:
+const exportToCSV = () => {
+  const headers = ['Nombre', 'Email', 'Código', 'Sellos Actuales', 'Total Ganados', 'Recompensas Canjeadas', 'Última Visita', 'Fecha de Registro']
+  const rows = filteredMembers.map(m => [
+    m.name,
+    m.email,
+    m.member_code,
+    m.current_stamps,
+    m.total_stamps_earned,
+    m.rewards_redeemed,
+    m.last_visit_at ? new Date(m.last_visit_at).toLocaleDateString() : 'Nunca',
+    new Date(m.joined_at).toLocaleDateString()
+  ])
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n')
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `miembros-${club.name.replace(/\s+/g, '-').toLowerCase()}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+
+    // 2. En el Header, actualiza el botón de Exportar:
+    <button 
+      onClick={exportToCSV}
+      className="inline-flex items-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium hover:bg-accent"
+    >
+      <Download className="w-4 h-4" />
+      Exportar CSV
+    </button>
   const getStatusBadge = (member: Member) => {
     if (member.current_stamps >= club.stamps_required) {
       return { label: 'Recompensa lista', color: 'bg-green-100 text-green-700' }
