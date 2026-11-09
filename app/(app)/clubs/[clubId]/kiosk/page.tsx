@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -36,19 +36,12 @@ export default function KioskPage() {
   const [success, setSuccess] = useState('')
   const [rewardEarned, setRewardEarned] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
-  const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt')
-  
-  const scannerRef = useRef<Html5Qrcode | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
   useEffect(() => {
     loadClub()
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {})
-        scannerRef.current.clear()
-      }
+      stopScanner()
     }
   }, [clubId])
 
@@ -58,69 +51,49 @@ export default function KioskPage() {
   }
 
   async function startScanner() {
-    setError('')
-    
     try {
-      // Pedir permiso de cámara primero
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
-      })
-      setCameraPermission('granted')
-      stream.getTracks().forEach(track => track.stop()) // Detener el stream de prueba
-
-      // Esperar a que el contenedor esté en el DOM
-      await new Promise(resolve => setTimeout(resolve, 100))
-
-      if (!containerRef.current) {
-        setError('Contenedor de cámara no disponible')
-        return
-      }
-
-      // Limpiar scanner anterior
-      if (scannerRef.current) {
-        await scannerRef.current.stop().catch(() => {})
-        scannerRef.current.clear()
-      }
-
-      // Crear nuevo scanner
-      scannerRef.current = new Html5Qrcode("qr-reader-container")
+      setError('')
+      setIsScanning(true)
       
-      await scannerRef.current.start(
+      // Crear scanner después de un pequeño delay para asegurar que el DOM esté listo
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      const scanner = new Html5Qrcode('qr-reader')
+      
+      await scanner.start(
         { facingMode: 'environment' },
         { 
           fps: 10, 
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0
+          qrbox: { width: 250, height: 250 }
         },
         (decodedText) => {
           handleScan(decodedText)
-          stopScanner()
+          scanner.stop()
+          setIsScanning(false)
         },
-        () => {} // Ignorar errores de escaneo continuo
+        () => {} // Ignorar errores menores
       )
-      setIsScanning(true)
     } catch (err: any) {
       console.error('Error de cámara:', err)
+      setIsScanning(false)
       if (err.name === 'NotAllowedError') {
-        setCameraPermission('denied')
-        setError('Permiso de cámara denegado. Habilítalo en la configuración del navegador.')
+        setError('Permiso de cámara denegado. Habilítalo en el navegador.')
       } else if (err.name === 'NotFoundError') {
         setError('No se encontró cámara en este dispositivo.')
+      } else if (err.name === 'NotSupportedError') {
+        setError('La cámara no es compatible con escaneo QR.')
       } else {
-        setError('No se pudo acceder a la cámara. Usa el código manual.')
+        setError('Error al iniciar cámara. Usa el código manual.')
       }
     }
   }
 
   function stopScanner() {
-    if (scannerRef.current && isScanning) {
-      scannerRef.current.stop().catch(() => {})
-      scannerRef.current.clear()
-      setIsScanning(false)
-    }
+    setIsScanning(false)
   }
 
   async function handleScan(code: string) {
+    if (!code) return
     setError('')
     setSuccess('')
     setRewardEarned(false)
@@ -128,7 +101,6 @@ export default function KioskPage() {
   }
 
   async function findMember(codeOrId: string) {
-    if (!codeOrId) return
     setLoading(true)
     const { data: member, error } = await supabase
       .from('members')
@@ -211,7 +183,7 @@ export default function KioskPage() {
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-gray-50 pb-24 md:pb-8">
-      {/* Header móvil */}
+      {/* Header */}
       <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center gap-3 z-10">
         <button 
           onClick={() => router.back()}
@@ -241,12 +213,7 @@ export default function KioskPage() {
             </button>
           ) : (
             <div className="relative">
-              <div 
-                ref={containerRef}
-                id="qr-reader-container" 
-                className="w-full rounded-lg overflow-hidden bg-black"
-                style={{ minHeight: '300px' }}
-              />
+              <div id="qr-reader" className="w-full rounded-lg overflow-hidden" />
               <button
                 onClick={stopScanner}
                 className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-lg z-20"
@@ -256,10 +223,11 @@ export default function KioskPage() {
             </div>
           )}
 
-          {cameraPermission === 'denied' && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-              <p className="font-semibold">Permiso de cámara denegado</p>
-              <p className="text-xs mt-1">Ve a configuración del navegador y habilita la cámara para este sitio.</p>
+          {/* Mensaje de error */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+              <AlertCircle className="w-4 h-4 inline mr-2" />
+              {error}
             </div>
           )}
 
@@ -284,14 +252,7 @@ export default function KioskPage() {
           </div>
         </div>
 
-        {/* Mensajes */}
-        {error && (
-          <div className="bg-red-50 text-red-700 p-4 rounded-xl flex items-center gap-3 border border-red-200">
-            <AlertCircle className="w-6 h-6 flex-shrink-0" />
-            <p>{error}</p>
-          </div>
-        )}
-        
+        {/* Mensajes de éxito */}
         {success && (
           <div className="bg-green-50 text-green-700 p-4 rounded-xl flex items-center gap-3 border border-green-200">
             <CheckCircle className="w-6 h-6 flex-shrink-0" />
