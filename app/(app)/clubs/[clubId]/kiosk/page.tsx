@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Html5Qrcode } from 'html5-qrcode'
-import { Coffee, Gift, CheckCircle, AlertCircle, Search, X } from 'lucide-react'
+import { Coffee, Gift, CheckCircle, AlertCircle, Search, X, Camera } from 'lucide-react'
 
 interface Member {
   id: string
@@ -60,7 +60,7 @@ export default function KioskPage() {
     
     try {
       await scannerRef.current.start(
-        { facingMode: "environment" }, // Fuerza la cámara trasera en móvil
+        { facingMode: "environment" }, // Cámara trasera en móvil
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
           handleScan(decodedText)
@@ -109,7 +109,7 @@ export default function KioskPage() {
   async function giveStamp() {
     if (!scannedMember || !club) return
 
-    // Feedback táctil para móviles
+    // Vibración en móvil
     if (navigator.vibrate) navigator.vibrate(50)
 
     setLoading(true)
@@ -172,102 +172,127 @@ export default function KioskPage() {
 
   return (
     <div className="max-w-md mx-auto p-4 space-y-6 min-h-screen bg-gray-50">
-      <div className="text-center">
+      {/* Header */}
+      <div className="text-center pt-4">
         <h1 className="text-2xl font-bold">{club.name}</h1>
-        <p className="text-sm text-muted-foreground">Modo Kiosco (Móvil)</p>
+        <p className="text-sm text-muted-foreground">Modo Kiosco</p>
       </div>
 
-      {/* Escáner */}
+      {/* Escáner QR */}
       <div className="bg-white rounded-xl shadow-sm border p-4 space-y-4">
         {!isScanning ? (
           <button
             onClick={startScanner}
-            className="w-full py-8 border-2 border-dashed rounded-lg flex flex-col items-center gap-2 text-muted-foreground hover:bg-gray-50"
+            className="w-full py-12 border-2 border-dashed rounded-xl flex flex-col items-center gap-3 text-muted-foreground hover:bg-gray-50 hover:border-primary transition-all"
           >
-            <CameraIcon className="w-8 h-8" />
-            <span className="font-medium">Toca para escanear QR del cliente</span>
+            <Camera className="w-12 h-12" />
+            <div className="text-center">
+              <p className="font-semibold text-lg">Toca para escanear</p>
+              <p className="text-sm">Usa la cámara trasera del celular</p>
+            </div>
           </button>
         ) : (
           <div className="relative">
             <div id="qr-reader" className="w-full rounded-lg overflow-hidden" />
             <button
               onClick={stopScanner}
-              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full"
+              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-lg"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         )}
 
         {/* Búsqueda Manual */}
-        <div className="pt-2 border-t">
+        <div className="pt-4 border-t">
           <form onSubmit={(e) => { e.preventDefault(); findMember(manualCode) }} className="flex gap-2">
             <input
               type="text"
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value.toUpperCase())}
               placeholder="CÓDIGO (Ej. JUA-TNE)"
-              className="flex-1 rounded-md border px-3 py-3 text-center font-mono text-lg uppercase"
+              className="flex-1 rounded-lg border px-4 py-3 text-center font-mono text-lg uppercase"
             />
-            <button type="submit" disabled={loading} className="bg-primary text-primary-foreground px-4 rounded-md font-medium">
+            <button 
+              type="submit" 
+              disabled={loading} 
+              className="bg-primary text-primary-foreground px-6 py-3 rounded-lg font-semibold disabled:opacity-50"
+            >
               {loading ? '...' : 'Buscar'}
             </button>
           </form>
         </div>
       </div>
 
-      {/* Mensajes */}
-      {error && <div className="bg-red-50 text-red-700 p-4 rounded-lg flex items-center gap-2"><AlertCircle className="w-5 h-5" /> {error}</div>}
-      {success && <div className="bg-green-50 text-green-700 p-4 rounded-lg flex items-center gap-2"><CheckCircle className="w-5 h-5" /> {success}</div>}
+      {/* Mensajes de Error/Éxito */}
+      {error && (
+        <div className="bg-red-50 text-red-700 p-4 rounded-xl flex items-center gap-3 border border-red-200">
+          <AlertCircle className="w-6 h-6 flex-shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
+      
+      {success && (
+        <div className="bg-green-50 text-green-700 p-4 rounded-xl flex items-center gap-3 border border-green-200">
+          <CheckCircle className="w-6 h-6 flex-shrink-0" />
+          <p>{success}</p>
+        </div>
+      )}
 
-      {/* Resultado del Escaneo */}
+      {/* Tarjeta del Cliente Escaneado */}
       {scannedMember && !rewardEarned && (
-        <div className="bg-white rounded-xl shadow-lg border p-6 text-center space-y-4 animate-in fade-in zoom-in duration-300">
-          <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center text-white text-2xl font-bold" style={{ backgroundColor: club.primary_color }}>
-            {scannedMember.name.charAt(0)}
-          </div>
-          <div>
-            <h2 className="text-xl font-bold">{scannedMember.name}</h2>
-            <p className="text-sm text-muted-foreground font-mono">{scannedMember.member_code}</p>
+        <div className="bg-white rounded-2xl shadow-xl border-2 p-6 text-center space-y-6 animate-in fade-in zoom-in duration-300">
+          <div 
+            className="w-20 h-20 mx-auto rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg"
+            style={{ backgroundColor: club.primary_color }}
+          >
+            {scannedMember.name.charAt(0).toUpperCase()}
           </div>
           
-          <div className="py-4">
-            <p className="text-4xl font-bold">{scannedMember.current_stamps} <span className="text-lg text-muted-foreground">/ {club.stamps_required}</span></p>
+          <div>
+            <h2 className="text-2xl font-bold">{scannedMember.name}</h2>
+            <p className="text-sm text-muted-foreground font-mono mt-1">{scannedMember.member_code}</p>
+          </div>
+          
+          <div className="py-6 bg-gray-50 rounded-xl">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Coffee className="w-8 h-8 text-primary" />
+              <p className="text-5xl font-bold">{scannedMember.current_stamps}</p>
+              <p className="text-2xl text-muted-foreground">/ {club.stamps_required}</p>
+            </div>
             <p className="text-sm text-muted-foreground">Sellos actuales</p>
           </div>
 
           <button
             onClick={giveStamp}
             disabled={loading}
-            className="w-full py-4 rounded-xl text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
+            className="w-full py-4 rounded-xl text-xl font-bold text-white shadow-lg active:scale-95 transition-transform disabled:opacity-50"
             style={{ backgroundColor: club.primary_color }}
           >
-            {loading ? 'Procesando...' : 'Dar Sello'}
+            {loading ? 'Procesando...' : '🎯 Dar Sello'}
           </button>
         </div>
       )}
 
-      {/* Modal de Recompensa */}
+      {/* Modal de Recompensa Ganada */}
       {rewardEarned && (
-        <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-6 text-center space-y-4 animate-in zoom-in duration-300">
-          <Gift className="w-12 h-12 mx-auto text-yellow-600" />
-          <h3 className="text-xl font-bold text-yellow-900">¡Recompensa Ganada!</h3>
-          <p className="text-yellow-800 font-medium">{club.reward_description}</p>
+        <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border-4 border-yellow-400 rounded-2xl p-8 text-center space-y-4 animate-in zoom-in duration-300">
+          <div className="flex justify-center">
+            <Gift className="w-16 h-16 text-yellow-600 animate-bounce" />
+          </div>
+          <h3 className="text-2xl font-bold text-yellow-900">🎉 ¡Recompensa Ganada!</h3>
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <p className="text-lg font-semibold text-gray-800">{club.reward_description}</p>
+          </div>
           <p className="text-sm text-yellow-700">Los sellos se han reiniciado a 0.</p>
           <button
             onClick={() => { setRewardEarned(false); setScannedMember(null); }}
-            className="w-full py-3 bg-yellow-600 text-white rounded-lg font-bold"
+            className="w-full py-4 bg-yellow-600 text-white rounded-xl font-bold text-lg shadow-lg active:scale-95"
           >
-            Entendido
+            ¡Entendido!
           </button>
         </div>
       )}
     </div>
-  )
-}
-
-function CameraIcon(props: any) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
   )
 }
