@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Html5Qrcode } from 'html5-qrcode'
-import { Coffee, Gift, CheckCircle, AlertCircle, Search, X, Camera } from 'lucide-react'
+import { Coffee, Gift, CheckCircle, AlertCircle, X, Camera, ArrowLeft } from 'lucide-react'
 
 interface Member {
   id: string
@@ -26,6 +26,7 @@ interface Club {
 
 export default function KioskPage() {
   const params = useParams()
+  const router = useRouter()
   const clubId = params.clubId as string
   const [club, setClub] = useState<Club | null>(null)
   const [scannedMember, setScannedMember] = useState<Member | null>(null)
@@ -35,8 +36,10 @@ export default function KioskPage() {
   const [success, setSuccess] = useState('')
   const [rewardEarned, setRewardEarned] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
+  const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt')
   
   const scannerRef = useRef<Html5Qrcode | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -44,6 +47,7 @@ export default function KioskPage() {
     return () => {
       if (scannerRef.current) {
         scannerRef.current.stop().catch(() => {})
+        scannerRef.current.clear()
       }
     }
   }, [clubId])
@@ -54,14 +58,40 @@ export default function KioskPage() {
   }
 
   async function startScanner() {
-    if (!scannerRef.current) {
-      scannerRef.current = new Html5Qrcode("qr-reader")
-    }
+    setError('')
     
     try {
+      // Pedir permiso de cámara primero
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      })
+      setCameraPermission('granted')
+      stream.getTracks().forEach(track => track.stop()) // Detener el stream de prueba
+
+      // Esperar a que el contenedor esté en el DOM
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      if (!containerRef.current) {
+        setError('Contenedor de cámara no disponible')
+        return
+      }
+
+      // Limpiar scanner anterior
+      if (scannerRef.current) {
+        await scannerRef.current.stop().catch(() => {})
+        scannerRef.current.clear()
+      }
+
+      // Crear nuevo scanner
+      scannerRef.current = new Html5Qrcode("qr-reader-container")
+      
       await scannerRef.current.start(
-        { facingMode: "environment" }, // Cámara trasera en móvil
-        { fps: 10, qrbox: { width: 250, height: 250 } },
+        { facingMode: 'environment' },
+        { 
+          fps: 10, 
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0
+        },
         (decodedText) => {
           handleScan(decodedText)
           stopScanner()
@@ -69,14 +99,23 @@ export default function KioskPage() {
         () => {} // Ignorar errores de escaneo continuo
       )
       setIsScanning(true)
-    } catch (err) {
-      setError('No se pudo acceder a la cámara. Usa el código manual.')
+    } catch (err: any) {
+      console.error('Error de cámara:', err)
+      if (err.name === 'NotAllowedError') {
+        setCameraPermission('denied')
+        setError('Permiso de cámara denegado. Habilítalo en la configuración del navegador.')
+      } else if (err.name === 'NotFoundError') {
+        setError('No se encontró cámara en este dispositivo.')
+      } else {
+        setError('No se pudo acceder a la cámara. Usa el código manual.')
+      }
     }
   }
 
   function stopScanner() {
     if (scannerRef.current && isScanning) {
       scannerRef.current.stop().catch(() => {})
+      scannerRef.current.clear()
       setIsScanning(false)
     }
   }
@@ -89,6 +128,7 @@ export default function KioskPage() {
   }
 
   async function findMember(codeOrId: string) {
+    if (!codeOrId) return
     setLoading(true)
     const { data: member, error } = await supabase
       .from('members')
@@ -109,7 +149,6 @@ export default function KioskPage() {
   async function giveStamp() {
     if (!scannedMember || !club) return
 
-    // Vibración en móvil
     if (navigator.vibrate) navigator.vibrate(50)
 
     setLoading(true)
@@ -149,7 +188,7 @@ export default function KioskPage() {
         status: 'pending',
       })
       setRewardEarned(true)
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100]) // Vibración de éxito
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100])
     }
 
     setSuccess(`✅ Sello agregado a ${scannedMember.name}`)
@@ -171,128 +210,150 @@ export default function KioskPage() {
   if (!club) return <div className="p-8 text-center">Cargando club...</div>
 
   return (
-    <div className="max-w-md mx-auto p-4 space-y-6 min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="text-center pt-4">
-        <h1 className="text-2xl font-bold">{club.name}</h1>
-        <p className="text-sm text-muted-foreground">Modo Kiosco</p>
+    <div className="max-w-md mx-auto min-h-screen bg-gray-50 pb-24 md:pb-8">
+      {/* Header móvil */}
+      <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center gap-3 z-10">
+        <button 
+          onClick={() => router.back()}
+          className="p-2 hover:bg-gray-100 rounded-lg"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1">
+          <h1 className="text-lg font-bold">{club.name}</h1>
+          <p className="text-xs text-muted-foreground">Modo Kiosco</p>
+        </div>
       </div>
 
-      {/* Escáner QR */}
-      <div className="bg-white rounded-xl shadow-sm border p-4 space-y-4">
-        {!isScanning ? (
-          <button
-            onClick={startScanner}
-            className="w-full py-12 border-2 border-dashed rounded-xl flex flex-col items-center gap-3 text-muted-foreground hover:bg-gray-50 hover:border-primary transition-all"
-          >
-            <Camera className="w-12 h-12" />
-            <div className="text-center">
-              <p className="font-semibold text-lg">Toca para escanear</p>
-              <p className="text-sm">Usa la cámara trasera del celular</p>
-            </div>
-          </button>
-        ) : (
-          <div className="relative">
-            <div id="qr-reader" className="w-full rounded-lg overflow-hidden" />
+      <div className="p-4 space-y-4">
+        {/* Escáner QR */}
+        <div className="bg-white rounded-xl shadow-sm border p-4 space-y-4">
+          {!isScanning ? (
             <button
-              onClick={stopScanner}
-              className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-lg"
+              onClick={startScanner}
+              className="w-full py-16 border-2 border-dashed rounded-xl flex flex-col items-center gap-3 text-muted-foreground hover:bg-gray-50 hover:border-primary transition-all"
             >
-              <X className="w-5 h-5" />
+              <Camera className="w-16 h-16" />
+              <div className="text-center">
+                <p className="font-semibold text-lg">Toca para escanear</p>
+                <p className="text-sm mt-1">Usa la cámara trasera del celular</p>
+              </div>
+            </button>
+          ) : (
+            <div className="relative">
+              <div 
+                ref={containerRef}
+                id="qr-reader-container" 
+                className="w-full rounded-lg overflow-hidden bg-black"
+                style={{ minHeight: '300px' }}
+              />
+              <button
+                onClick={stopScanner}
+                className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-lg z-20"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+
+          {cameraPermission === 'denied' && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+              <p className="font-semibold">Permiso de cámara denegado</p>
+              <p className="text-xs mt-1">Ve a configuración del navegador y habilita la cámara para este sitio.</p>
+            </div>
+          )}
+
+          {/* Búsqueda Manual */}
+          <div className="pt-4 border-t">
+            <form onSubmit={(e) => { e.preventDefault(); findMember(manualCode) }} className="flex gap-2">
+              <input
+                type="text"
+                value={manualCode}
+                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                placeholder="CÓDIGO (Ej. JUA-TNE)"
+                className="flex-1 rounded-lg border px-4 py-3 text-center font-mono text-lg uppercase"
+              />
+              <button 
+                type="submit" 
+                disabled={loading} 
+                className="bg-primary text-primary-foreground px-6 py-3 rounded-lg font-semibold disabled:opacity-50"
+              >
+                {loading ? '...' : 'Buscar'}
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* Mensajes */}
+        {error && (
+          <div className="bg-red-50 text-red-700 p-4 rounded-xl flex items-center gap-3 border border-red-200">
+            <AlertCircle className="w-6 h-6 flex-shrink-0" />
+            <p>{error}</p>
+          </div>
+        )}
+        
+        {success && (
+          <div className="bg-green-50 text-green-700 p-4 rounded-xl flex items-center gap-3 border border-green-200">
+            <CheckCircle className="w-6 h-6 flex-shrink-0" />
+            <p>{success}</p>
+          </div>
+        )}
+
+        {/* Tarjeta del Cliente */}
+        {scannedMember && !rewardEarned && (
+          <div className="bg-white rounded-2xl shadow-xl border-2 p-6 text-center space-y-6">
+            <div 
+              className="w-20 h-20 mx-auto rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg"
+              style={{ backgroundColor: club.primary_color }}
+            >
+              {scannedMember.name.charAt(0).toUpperCase()}
+            </div>
+            
+            <div>
+              <h2 className="text-2xl font-bold">{scannedMember.name}</h2>
+              <p className="text-sm text-muted-foreground font-mono mt-1">{scannedMember.member_code}</p>
+            </div>
+            
+            <div className="py-6 bg-gray-50 rounded-xl">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Coffee className="w-8 h-8 text-primary" />
+                <p className="text-5xl font-bold">{scannedMember.current_stamps}</p>
+                <p className="text-2xl text-muted-foreground">/ {club.stamps_required}</p>
+              </div>
+              <p className="text-sm text-muted-foreground">Sellos actuales</p>
+            </div>
+
+            <button
+              onClick={giveStamp}
+              disabled={loading}
+              className="w-full py-4 rounded-xl text-xl font-bold text-white shadow-lg active:scale-95 transition-transform disabled:opacity-50"
+              style={{ backgroundColor: club.primary_color }}
+            >
+              {loading ? 'Procesando...' : '🎯 Dar Sello'}
             </button>
           </div>
         )}
 
-        {/* Búsqueda Manual */}
-        <div className="pt-4 border-t">
-          <form onSubmit={(e) => { e.preventDefault(); findMember(manualCode) }} className="flex gap-2">
-            <input
-              type="text"
-              value={manualCode}
-              onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-              placeholder="CÓDIGO (Ej. JUA-TNE)"
-              className="flex-1 rounded-lg border px-4 py-3 text-center font-mono text-lg uppercase"
-            />
-            <button 
-              type="submit" 
-              disabled={loading} 
-              className="bg-primary text-primary-foreground px-6 py-3 rounded-lg font-semibold disabled:opacity-50"
-            >
-              {loading ? '...' : 'Buscar'}
-            </button>
-          </form>
-        </div>
-      </div>
-
-      {/* Mensajes de Error/Éxito */}
-      {error && (
-        <div className="bg-red-50 text-red-700 p-4 rounded-xl flex items-center gap-3 border border-red-200">
-          <AlertCircle className="w-6 h-6 flex-shrink-0" />
-          <p>{error}</p>
-        </div>
-      )}
-      
-      {success && (
-        <div className="bg-green-50 text-green-700 p-4 rounded-xl flex items-center gap-3 border border-green-200">
-          <CheckCircle className="w-6 h-6 flex-shrink-0" />
-          <p>{success}</p>
-        </div>
-      )}
-
-      {/* Tarjeta del Cliente Escaneado */}
-      {scannedMember && !rewardEarned && (
-        <div className="bg-white rounded-2xl shadow-xl border-2 p-6 text-center space-y-6 animate-in fade-in zoom-in duration-300">
-          <div 
-            className="w-20 h-20 mx-auto rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg"
-            style={{ backgroundColor: club.primary_color }}
-          >
-            {scannedMember.name.charAt(0).toUpperCase()}
-          </div>
-          
-          <div>
-            <h2 className="text-2xl font-bold">{scannedMember.name}</h2>
-            <p className="text-sm text-muted-foreground font-mono mt-1">{scannedMember.member_code}</p>
-          </div>
-          
-          <div className="py-6 bg-gray-50 rounded-xl">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Coffee className="w-8 h-8 text-primary" />
-              <p className="text-5xl font-bold">{scannedMember.current_stamps}</p>
-              <p className="text-2xl text-muted-foreground">/ {club.stamps_required}</p>
+        {/* Recompensa Ganada */}
+        {rewardEarned && (
+          <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border-4 border-yellow-400 rounded-2xl p-8 text-center space-y-4">
+            <div className="flex justify-center">
+              <Gift className="w-16 h-16 text-yellow-600 animate-bounce" />
             </div>
-            <p className="text-sm text-muted-foreground">Sellos actuales</p>
+            <h3 className="text-2xl font-bold text-yellow-900">🎉 ¡Recompensa Ganada!</h3>
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-lg font-semibold text-gray-800">{club.reward_description}</p>
+            </div>
+            <p className="text-sm text-yellow-700">Los sellos se han reiniciado a 0.</p>
+            <button
+              onClick={() => { setRewardEarned(false); setScannedMember(null); }}
+              className="w-full py-4 bg-yellow-600 text-white rounded-xl font-bold text-lg shadow-lg active:scale-95"
+            >
+              ¡Entendido!
+            </button>
           </div>
-
-          <button
-            onClick={giveStamp}
-            disabled={loading}
-            className="w-full py-4 rounded-xl text-xl font-bold text-white shadow-lg active:scale-95 transition-transform disabled:opacity-50"
-            style={{ backgroundColor: club.primary_color }}
-          >
-            {loading ? 'Procesando...' : '🎯 Dar Sello'}
-          </button>
-        </div>
-      )}
-
-      {/* Modal de Recompensa Ganada */}
-      {rewardEarned && (
-        <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border-4 border-yellow-400 rounded-2xl p-8 text-center space-y-4 animate-in zoom-in duration-300">
-          <div className="flex justify-center">
-            <Gift className="w-16 h-16 text-yellow-600 animate-bounce" />
-          </div>
-          <h3 className="text-2xl font-bold text-yellow-900">🎉 ¡Recompensa Ganada!</h3>
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <p className="text-lg font-semibold text-gray-800">{club.reward_description}</p>
-          </div>
-          <p className="text-sm text-yellow-700">Los sellos se han reiniciado a 0.</p>
-          <button
-            onClick={() => { setRewardEarned(false); setScannedMember(null); }}
-            className="w-full py-4 bg-yellow-600 text-white rounded-xl font-bold text-lg shadow-lg active:scale-95"
-          >
-            ¡Entendido!
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
