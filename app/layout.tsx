@@ -26,17 +26,22 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans`}>
-        <div className="flex min-h-screen bg-background">
-          <aside className="hidden md:flex w-64 flex-col border-r bg-card">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <div className="relative flex min-h-screen bg-background">
+          {/* Sidebar: SOLO desktop (hidden en mobile) */}
+          <div className="hidden md:block">
             <Sidebar />
-          </aside>
+          </div>
 
-          <main className="flex-1 pb-20 md:pb-0 overflow-y-auto">
+          {/* Contenido principal */}
+          <div className="flex-1 pb-20 md:pb-0">
             {children}
-          </main>
+          </div>
 
-          <MobileNav />
+          {/* Bottom Nav: SOLO mobile (hidden en desktop) */}
+          <div className="md:hidden">
+            <MobileNav />
+          </div>
         </div>
       </body>
     </html>
