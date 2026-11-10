@@ -13,12 +13,12 @@ export default async function ClubPage({ params }: ClubPageProps) {
   const { slug } = await params
   const supabase = await createClient()
 
-  // Buscar el club por slug
+  // Buscar el club por slug y que esté publicado
   const { data: club, error } = await supabase
     .from('clubs')
     .select('*')
     .eq('slug', slug)
-    .eq('status', 'published')
+    .eq('is_published', true) // <-- Cambio para usar la columna que creamos
     .single()
 
   if (error || !club) {
