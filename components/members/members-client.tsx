@@ -176,7 +176,11 @@ export function MembersClient({ members, club }: MembersClientProps) {
               filteredMembers.map((member) => {
                 const status = getStatusBadge(member)
                 return (
-                  <tr key={member.id} className="border-b hover:bg-muted/30 transition-colors">
+                  <tr 
+                    key={member.id} 
+                    className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() => window.location.href = `/clubs/${club.id}/card/${member.id}`}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div
