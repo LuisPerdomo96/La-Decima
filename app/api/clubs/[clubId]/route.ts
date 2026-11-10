@@ -3,11 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { clubId: string } }
+  { params }: { params: Promise<{ clubId: string }> }
 ) {
   try {
+    const { clubId } = await params
     const supabase = await createClient()
-    const clubId = params.clubId
 
     // 1. Borrar datos dependientes primero (para evitar errores de clave foránea)
     await supabase.from('rewards').delete().eq('club_id', clubId)
