@@ -8,7 +8,7 @@ Aplicación web de fidelidad para negocios locales, construida con Next.js App R
 npm run dev
 ```
 
-Abre `http://localhost:3000` para ver la aplicación. Para validar el proyecto:
+Abre `la-decima.vercel.app` para ver la aplicación. Para validar el proyecto:
 
 ```bash
 npm run lint
