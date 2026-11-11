@@ -16,6 +16,7 @@ export default function JoinClubPage() {
   const [error, setError] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [generatedCode, setGeneratedCode] = useState('')
 
   const supabase = createClient()
 
@@ -24,6 +25,7 @@ export default function JoinClubPage() {
   }, [clubId])
 
   async function loadClub() {
+    // NO filtrar por is_published - esta es una URL directa
     const { data, error } = await supabase
       .from('clubs')
       .select('*')
@@ -43,16 +45,17 @@ export default function JoinClubPage() {
     setJoining(true)
     setError('')
 
-    // Generar código único
-    const memberCode = `${club.name.substring(0, 3).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+    const prefix = club.name.replace(/\s+/g, '').substring(0, 3).toUpperCase()
+    const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase()
+    const memberCode = `${prefix}-${randomStr}`
 
-    const { data: member, error } = await supabase
+    const { data: member, error: insertError } = await supabase
       .from('members')
       .insert([
         {
           club_id: clubId,
-          name: name,
-          email: email,
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
           member_code: memberCode,
           current_stamps: 0,
           total_stamps_earned: 0,
@@ -63,9 +66,14 @@ export default function JoinClubPage() {
       .select()
       .single()
 
-    if (error) {
-      setError('Error al unirse: ' + error.message)
+    if (insertError) {
+      if (insertError.code === '23505') {
+        setError('Este correo ya está registrado en este club.')
+      } else {
+        setError('Error al unirse: ' + insertError.message)
+      }
     } else {
+      setGeneratedCode(memberCode)
       setSuccess(true)
     }
     setJoining(false)
@@ -82,10 +90,11 @@ export default function JoinClubPage() {
   if (error || !club) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold mb-2">Club no encontrado</h1>
-          <p className="text-muted-foreground">Este club no existe o no está disponible.</p>
+          <p className="text-muted-foreground mb-6">{error || 'Este club no existe.'}</p>
+          <a href="/" className="text-primary hover:underline">Volver al inicio</a>
         </div>
       </div>
     )
@@ -94,16 +103,18 @@ export default function JoinClubPage() {
   if (success) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center space-y-4">
-          <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
-          <h1 className="text-2xl font-bold">¡Bienvenido a {club.name}!</h1>
-          <p className="text-muted-foreground">
-            Te has unido exitosamente al club de lealtad.
-          </p>
-          <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-            <p className="text-sm text-muted-foreground">Tu código de miembro:</p>
-            <p className="text-2xl font-mono font-bold text-primary">{name.substring(0, 3).toUpperCase()}-{Math.random().toString(36).substring(2, 6).toUpperCase()}</p>
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center space-y-6">
+          <CheckCircle className="w-20 h-20 text-green-500 mx-auto" />
+          <div>
+            <h1 className="text-2xl font-bold">¡Bienvenido a {club.name}!</h1>
+            <p className="text-muted-foreground mt-2">Te has unido exitosamente al club de lealtad.</p>
           </div>
+          
+          <div className="bg-gray-50 border-2 border-dashed border-primary/30 rounded-xl p-6 space-y-2">
+            <p className="text-sm text-muted-foreground uppercase tracking-wide">Tu código de miembro</p>
+            <p className="text-3xl font-mono font-bold text-primary tracking-wider">{generatedCode}</p>
+          </div>
+
           <p className="text-sm text-muted-foreground">
             Presenta este código en tu próxima visita para empezar a acumular sellos.
           </p>
@@ -115,10 +126,9 @@ export default function JoinClubPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 space-y-6">
-        {/* Header del Club */}
         <div className="text-center space-y-2">
           <div 
-            className="w-16 h-16 mx-auto rounded-xl flex items-center justify-center text-white"
+            className="w-16 h-16 mx-auto rounded-xl flex items-center justify-center text-white shadow-md"
             style={{ backgroundColor: club.primary_color || '#000' }}
           >
             <Coffee className="w-8 h-8" />
@@ -127,49 +137,42 @@ export default function JoinClubPage() {
           <p className="text-sm text-muted-foreground">{club.description || 'Club de Lealtad'}</p>
         </div>
 
-        {/* Recompensa */}
         {club.reward_description && (
-          <div className="bg-primary/10 rounded-lg p-4 text-center">
+          <div className="bg-primary/10 rounded-lg p-4 text-center border border-primary/20">
             <p className="text-sm font-medium text-primary">🎁 Recompensa</p>
-            <p className="text-lg font-bold text-primary">{club.reward_description}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Después de {club.stamps_required} sellos
-            </p>
+            <p className="text-lg font-bold text-primary mt-1">{club.reward_description}</p>
+            <p className="text-xs text-muted-foreground mt-1">Después de {club.stamps_required} sellos</p>
           </div>
         )}
 
-        {/* Formulario */}
         <form onSubmit={handleJoin} className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">
-              Nombre completo *
-            </label>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Nombre completo *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Tu nombre"
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">
-              Email *
-            </label>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Email *</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-md border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="tu@email.com"
             />
           </div>
 
           {error && (
-            <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
+            <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
               {error}
             </div>
           )}
