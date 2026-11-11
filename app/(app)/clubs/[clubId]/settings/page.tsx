@@ -65,8 +65,7 @@ export default function ClubSettingsPage() {
       setClub({ ...club, is_published: false })
     }
   }
-
-  const publicUrl = `https://la-decima.vercel.app/join/${clubId}`
+const publicUrl = `https://la-decima.vercel.app/join/${club.id}`
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(publicUrl)
