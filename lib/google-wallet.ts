@@ -88,7 +88,19 @@ export function generateGoogleWalletJWT(data: WalletPassData): string {
     }
   }
 
+  // DEBUG: Imprimir el payload para verificar
+  console.log('=== JWT PAYLOAD ===')
+  console.log(JSON.stringify(jwtPayload, null, 2))
+  console.log('==================')
+
   const token = jwt.sign(jwtPayload, PRIVATE_KEY, { algorithm: 'RS256' })
+  
+  // DEBUG: Decodificar el JWT para verificar
+  const decoded = jwt.decode(token)
+  console.log('=== JWT DECODED ===')
+  console.log(JSON.stringify(decoded, null, 2))
+  console.log('==================')
+  
   return token
 }
 
