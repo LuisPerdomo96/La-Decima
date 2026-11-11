@@ -100,23 +100,28 @@ export default function KioskPage() {
     await findMember(code.trim().toUpperCase())
   }
 
-  async function findMember(codeOrId: string) {
-    setLoading(true)
-    const { data: member, error } = await supabase
-      .from('members')
-      .select('*')
-      .eq('club_id', clubId)
-      .or(`member_code.eq.${codeOrId},id.eq.${codeOrId}`)
-      .single()
+    async function findMember(codeOrId: string) {
+      if (!codeOrId) return
+      setLoading(true)
+      
+      const code = codeOrId.trim().toUpperCase()
+      
+      const { data: member, error } = await supabase
+        .from('members')
+        .select('*')
+        .eq('club_id', clubId)
+        .eq('member_code', code)
+        .single()
 
-    setLoading(false)
-    if (error || !member) {
-      setError('Cliente no encontrado. Verifica el código.')
-      setScannedMember(null)
-    } else {
-      setScannedMember(member)
+      setLoading(false)
+      
+      if (error || !member) {
+        setError('Cliente no encontrado. Verifica el código.')
+        setScannedMember(null)
+      } else {
+        setScannedMember(member)
+      }
     }
-  }
 
   async function giveStamp() {
     if (!scannedMember || !club) return
