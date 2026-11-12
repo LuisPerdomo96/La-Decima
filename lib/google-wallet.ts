@@ -44,7 +44,7 @@ export function generateGoogleWalletJWT(data: WalletPassData) {
     },
     textModulesData: [
       {
-        id: 'reward_module_1', // <-- Agregado por seguridad
+        id: 'reward_module_1', // ✅ ESTE 'id' ERA EL QUE FALTABA Y CAUSABA EL ERROR
         header: 'Recompensa',
         body: String(data.rewardDescription || 'Completa tus sellos para ganar premios')
       }
@@ -59,7 +59,8 @@ export function generateGoogleWalletJWT(data: WalletPassData) {
   const jwtPayload = {
     iss: SERVICE_ACCOUNT_EMAIL,
     aud: 'google',
-    origins: ['https://la-decima.vercel.app'],
+    // ✅ Agregamos localhost para que puedas probar sin errores de origen
+    origins: ['https://la-decima.vercel.app', 'http://localhost:3000'],
     typ: 'savetowallet',
     iat: now,
     payload: {
