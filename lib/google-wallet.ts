@@ -34,40 +34,54 @@ export function generateGoogleWalletJWT(data: WalletPassData): string {
           id: `${ISSUER_ID}.${data.memberId}`,
           classId: `${ISSUER_ID}.${CLASS_ID}`,
           state: 'active',
-          accountId: data.memberCode,
-          accountName: data.memberName,
+          version: 1, // ✅ CAMPO OBLIGATORIO QUE FALTABA
+          accountId: String(data.memberCode),
+          accountName: String(data.memberName),
           cardTitle: {
-            defaultValue: { language: 'es', value: data.clubName }
+            defaultValue: { language: 'es', value: String(data.clubName) }
           },
           header: {
             defaultValue: { language: 'es', value: 'Club de Lealtad' }
           },
           subheader: {
-            defaultValue: { language: 'es', value: data.memberName }
+            defaultValue: { language: 'es', value: String(data.memberName) }
           },
           loyaltyPoints: {
             label: { defaultValue: { language: 'es', value: 'Sellos' } },
-            balance: { int: data.currentStamps }
+            balance: { int: Number(data.currentStamps) || 0 }
           },
           textModulesData: [
-            { header: 'Recompensa', body: data.rewardDescription, id: 'reward' },
+            { 
+              header: 'Recompensa', 
+              body: String(data.rewardDescription || 'Completa tus sellos para ganar premios')
+            },
             {
               header: 'Progreso',
-              body: `${data.currentStamps} de ${data.stampsRequired} sellos`,
-              id: 'progress'
+              body: `${Number(data.currentStamps) || 0} de ${Number(data.stampsRequired) || 10} sellos`
             }
           ],
           barcode: {
             type: 'qrCode',
-            value: data.memberCode,
-            alternateText: data.memberCode
+            value: String(data.memberCode),
+            alternateText: String(data.memberCode)
           }
         }
       ]
     }
   }
 
-  return jwt.sign(jwtPayload, PRIVATE_KEY, { algorithm: 'RS256' })
+  console.log('=== GOOGLE WALLET PAYLOAD ===')
+  console.log(JSON.stringify(jwtPayload, null, 2))
+  console.log('=============================')
+
+  try {
+    const token = jwt.sign(jwtPayload, PRIVATE_KEY, { algorithm: 'RS256' })
+    console.log('✅ JWT firmado exitosamente')
+    return token
+  } catch (err) {
+    console.error('❌ Error firmando JWT:', err)
+    throw new Error('Error firmando el pase: ' + (err as Error).message)
+  }
 }
 
 export function getGoogleWalletSaveUrl(token: string): string {
