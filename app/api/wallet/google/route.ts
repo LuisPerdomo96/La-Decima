@@ -33,16 +33,8 @@ export async function GET(request: Request) {
 
     const club = member.clubs
 
-    console.log('Generando JWT para:', {
-      memberId,
-      clubId,
-      clubName: club.name,
-      issuerId: process.env.GOOGLE_WALLET_ISSUER_ID,
-      classId: process.env.GOOGLE_WALLET_CLASS_ID,
-      serviceAccountEmail: process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL,
-    })
-
-    const jwt = generateGoogleWalletJWT({
+    // ✅ CORRECCIÓN: Desestructurar el objeto para obtener solo el token
+    const { token: jwt } = generateGoogleWalletJWT({
       memberId: member.id,
       memberName: member.name,
       memberCode: member.member_code,
@@ -53,15 +45,13 @@ export async function GET(request: Request) {
       primaryColor: club.primary_color,
     })
 
-    console.log('JWT generado (primeros 100 chars):', jwt.substring(0, 100))
+    console.log('✅ JWT generado exitosamente (longitud):', jwt.length)
 
     const saveUrl = getGoogleWalletSaveUrl(jwt)
 
-    console.log('URL de guardado:', saveUrl)
-
     return NextResponse.json({ url: saveUrl })
   } catch (error) {
-    console.error('Error generando Google Wallet:', error)
+    console.error('❌ Error generando Google Wallet:', error)
     return NextResponse.json(
       { error: 'Error al generar el pase: ' + (error as Error).message },
       { status: 500 }
